@@ -19,7 +19,7 @@ fn generate_ebpf_hooks(postgres_funcs: &[&str]) -> String {
       }
 
       #[uretprobe]
-      pub fn [NAME]_return(ctx: ProbeContext) -> u32 {
+      pub fn [NAME]_return(ctx: RetProbeContext) -> u32 {
         let thread_id = ctx.tgid();
         submit_return(ctx, "[NAME]", thread_id);
         0
@@ -30,7 +30,7 @@ fn generate_ebpf_hooks(postgres_funcs: &[&str]) -> String {
         r#"
         use aya_ebpf::{
             macros::{uprobe, uretprobe},
-            programs::ProbeContext,
+            programs::{ProbeContext,RetProbeContext},
             EbpfContext,
         };
         use crate::hooks::{submit_entry, submit_return, str_to_func};

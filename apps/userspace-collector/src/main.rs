@@ -1,4 +1,4 @@
-use aya::maps::{AsyncPerfEventArray, MapData};
+use aya::maps::{PerfEventArray, MapData};
 use aya::util::online_cpus;
 use bpf::{attach_uprobes, init_bpf};
 use log::info;
@@ -40,13 +40,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     init_metrics();
 
     // Create a queue to receive events from the eBPF program.
-    let mut queue: AsyncPerfEventArray<MapData> =
-        AsyncPerfEventArray::try_from(bpf.take_map("EVENTS").unwrap())?;
+    let mut queue: PerfEventArray<MapData> =
+        PerfEventArray::try_from(bpf.take_map("EVENTS").unwrap())?;
 
     // Listen to events from all online CPUs. eBPF hooks will be
     // executed on the CPU that the traced function is running on.
     // This helps us to avoid context switches and cache misses.
-    let cpus = online_cpus()?;
+    //let cpus = online_cpus()?;
+    let cpus = online_cpus().map_err(|(msg, e)| {
+        eprintln!("{}: {}", msg, e);
+        anyhow::anyhow!("{}: {}", msg, e)
+    })?;
     for cpu_id in cpus {
         let tracing = tracing.clone();
         listen_to_cpu(cpu_id, &mut queue, tracing)?;
