@@ -1,10 +1,10 @@
 use crate::generated::{POSTGRES_FUNCS, POSTGRES_TOP_LEVEL_COMMAND_FUNCS};
-use aya::{include_bytes_aligned, programs::UProbe, Bpf};
-use aya_log::BpfLogger;
+use aya::{include_bytes_aligned, programs::UProbe, Ebpf};
+use aya_log::EbpfLogger;
 use log::{debug, warn};
 use std::error::Error;
 
-pub fn init_bpf() -> Result<Bpf, Box<dyn Error>> {
+pub fn init_bpf() -> Result<Ebpf, Box<dyn Error>> {
     // Bump the memlock rlimit. This is needed for older kernels that don't use the
     // new memcg based accounting, see https://lwn.net/Articles/837122/
     let rlim = libc::rlimit {
@@ -18,7 +18,7 @@ pub fn init_bpf() -> Result<Bpf, Box<dyn Error>> {
 
     // Embed the eBPF object file as raw bytes at compile-time and load it at runtime.
     #[cfg(debug_assertions)]
-    let mut bpf = Bpf::load(include_bytes_aligned!(
+    let mut bpf = Ebpf::load(include_bytes_aligned!(
         "../../target/bpfel-unknown-none/debug/kernelspace-ebpf-tracer"
     ))?;
     #[cfg(not(debug_assertions))]
@@ -28,14 +28,14 @@ pub fn init_bpf() -> Result<Bpf, Box<dyn Error>> {
 
     // Uncomment if a log statement is added to the eBPF program. This will
     // print the log messages to the console.
-    if let Err(e) = BpfLogger::init(&mut bpf) {
+    if let Err(e) = EbpfLogger::init(&mut bpf) {
         warn!("failed to initialize eBPF logger: {}", e);
     }
     Ok(bpf)
 }
 
 /// Attach uprobes to the functions we want to trace in postgres.
-pub fn attach_uprobes(bpf: &mut Bpf) -> Result<(), Box<dyn Error>> {
+pub fn attach_uprobes(bpf: &mut Ebpf) -> Result<(), Box<dyn Error>> {
     for target in POSTGRES_TOP_LEVEL_COMMAND_FUNCS {
         let program: &mut UProbe = bpf
             .program_mut(&format!("{}_entry", target))

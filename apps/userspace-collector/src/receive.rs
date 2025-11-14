@@ -1,5 +1,5 @@
 use crate::tracing::TraceEmitter;
-use aya::maps::{AsyncPerfEventArray, MapData};
+use aya::maps::{PerfEventArray, MapData};
 use bytes::BytesMut;
 use log::warn;
 use opentelemetry::{global, Context, KeyValue};
@@ -10,7 +10,7 @@ use std::{error::Error, mem::size_of};
 /// Listen to events coming from our eBPF program on a specific CPU.
 pub fn listen_to_cpu(
     cpu_id: u32,
-    queue: &mut AsyncPerfEventArray<MapData>,
+    queue: &mut PerfEventArray<MapData>,
     tracing: TraceEmitter,
 ) -> Result<(), Box<dyn Error>> {
     let mut buf = queue.open(cpu_id, Some(64))?;
@@ -21,7 +21,7 @@ pub fn listen_to_cpu(
             .collect::<Vec<_>>();
 
         loop {
-            let events = match buf.read_events(&mut buffers).await {
+            let events = match buf.read_events(&mut buffers) {
                 Ok(events) => events,
                 Err(e) => {
                     warn!("Error reading events: {}", e);
