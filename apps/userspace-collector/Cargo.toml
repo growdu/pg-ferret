@@ -19,7 +19,8 @@ bytes = "1.6.0"
 opentelemetry = { version = "0.23", features = ["metrics"] }
 opentelemetry_sdk = { version = "0.23", features = ["rt-tokio", "metrics", "trace"] }
 opentelemetry-stdout = { version = "0.4", features = ["trace", "metrics"] }
-opentelemetry-otlp = { version = "0.16.0", features = ["tls-roots", "tls", "tls-webkpi-roots", "grpc-tonic", "gzip-tonic", "trace", "metrics"]}
+#opentelemetry-otlp = { version = "0.16.0", features = ["tls-roots", "tls", "tls-webkpi-roots", "grpc-tonic", "gzip-tonic", "trace", "metrics"]}
+opentelemetry-otlp = { path = "../vendor/opentelemetry-otlp" }
 opentelemetry-semantic-conventions = "0.15.0"
 rand = "0.8.5"
 regex = "1.10.4"
@@ -33,7 +34,12 @@ http-body-util = "0.1.1"
 lazy_static = "1.4.0"
 axum = "0.7.5"
 tonic = { version = "0.11.0", features = ["tls-roots", "tls"] }
+chrono = { version = "0.4", features = ["serde"] }
 
 [[bin]]
 name = "userspace-collector"
 path = "src/main.rs"
+
+# [[bin]]
+# name = "test-bpf"
+# path = "src/test_bpf.rs"

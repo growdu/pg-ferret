@@ -22,7 +22,7 @@ pub fn init_bpf() -> Result<Ebpf, Box<dyn Error>> {
         "../../target/bpfel-unknown-none/debug/kernelspace-ebpf-tracer"
     ))?;
     #[cfg(not(debug_assertions))]
-    let mut bpf = Bpf::load(include_bytes_aligned!(
+    let mut bpf = Ebpf::load(include_bytes_aligned!(
         "../../target/bpfel-unknown-none/release/kernelspace-ebpf-tracer"
     ))?;
 

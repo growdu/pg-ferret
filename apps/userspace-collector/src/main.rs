@@ -32,6 +32,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tracing_endpoint = env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
         .ok()
         .filter(|val| !val.is_empty());
+
     let tracing = TraceEmitter::initialise(tracing_endpoint)?;
 
     // Initialise the metrics prometheus exporter. We'll collect metrics

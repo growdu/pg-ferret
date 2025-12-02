@@ -11,6 +11,10 @@ use std::env;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tonic::metadata::{MetadataMap, MetadataValue};
+use std::fs::OpenOptions;
+use std::fs::File;
+use std::io::Write;
+
 
 #[derive(Clone)]
 pub struct TraceEmitter {
@@ -18,6 +22,7 @@ pub struct TraceEmitter {
     contexts: ThreadContexts,
     trace_ids: TraceIds,
     remote_contexts: RemoteContexts,
+    file: Arc<Mutex<File>>, 
 }
 
 type ThreadContexts = Arc<Mutex<HashMap<u32, Vec<(String, Context)>>>>;
@@ -47,6 +52,18 @@ lazy_static::lazy_static! {
 
 impl TraceEmitter {
     pub fn initialise(endpoint: Option<String>) -> Result<Self, anyhow::Error> {
+        // 1. 获取 log_path 环境变量
+        let log_path = env::var("LOG_FILE_PATH").unwrap_or("spans.json".to_string());
+
+        println!("Writing spans to {}", log_path);
+
+        // 2. 打开文件（以追加模式）
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .write(true)
+            .open(&log_path)?;
+        let file = Arc::new(Mutex::new(file));
         let endpoint = match endpoint {
             Some(endpoint) => {
                 println!("Sending traces to {}", endpoint);
@@ -96,6 +113,7 @@ impl TraceEmitter {
             contexts,
             trace_ids,
             remote_contexts,
+            file
         };
         {
             let tracing = tracing.clone();
@@ -228,7 +246,22 @@ impl TraceEmitter {
         let last = thread_contexts.pop();
         if let Some((n, context)) = last {
             if n == name {
-                context.span().end();
+                //context.span().end();
+                let span = context.span();
+                let span_context = span.span_context().clone();
+
+                span.end();
+
+                // ---- 写入文件 ----
+                let mut file = self.file.lock().unwrap();
+                let record = serde_json::json!({
+                    "name": name,
+                    "trace_id": span_context.trace_id().to_string(),
+                    "span_id": span_context.span_id().to_string(),
+                    "thread_id": thread_id,
+                    "timestamp": chrono::Utc::now().timestamp_micros(),
+                });
+                writeln!(file, "{}", record.to_string()).unwrap();
             } else {
                 thread_contexts.push((n, context));
             }
