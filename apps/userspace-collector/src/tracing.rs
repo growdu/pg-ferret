@@ -25,7 +25,8 @@ pub struct TraceEmitter {
     file: Arc<Mutex<File>>, 
 }
 
-type ThreadContexts = Arc<Mutex<HashMap<u32, Vec<(String, Context)>>>>;
+///type ThreadContexts = Arc<Mutex<HashMap<u32, Vec<(String, Context)>>>>;
+type ThreadContexts = Arc<Mutex<HashMap<u32, Vec<(String, Context, i64)>>>>;
 type TraceIds = Arc<Mutex<HashMap<u32, u128>>>;
 type RemoteContexts = Arc<Mutex<HashMap<u32, Context>>>;
 
@@ -165,6 +166,7 @@ impl TraceEmitter {
         remote_parent: Option<Context>,
         attributes: Vec<KeyValue>,
     ) {
+        let start_time = chrono::Utc::now().timestamp_nanos();
         let span_id = rand::random::<u64>();
         let mut contexts = self.contexts.lock().unwrap();
         let thread_contexts = contexts.entry(thread_id).or_default();
@@ -227,15 +229,15 @@ impl TraceEmitter {
                 }
             }
             let context = Context::current_with_span(span);
-            *thread_contexts = vec![(name.to_string(), context)];
+            *thread_contexts = vec![(name.to_string(), context, start_time)];
         } else {
             let parent_context = thread_contexts.last();
-            let context = parent_context.map(|(_, parent_context)| {
+            let context = parent_context.map(|(_, parent_context, _)| {
                 let span = builder.start_with_context(&self.tracer, parent_context);
                 Context::current_with_span(span)
             });
             if let Some(context) = context {
-                thread_contexts.push((name.to_string(), context));
+                thread_contexts.push((name.to_string(), context, start_time));
             }
         };
     }
@@ -244,26 +246,45 @@ impl TraceEmitter {
         let mut contexts = self.contexts.lock().unwrap();
         let thread_contexts = contexts.entry(thread_id).or_default();
         let last = thread_contexts.pop();
-        if let Some((n, context)) = last {
+
+        if let Some((n, context, start_time)) = last {
             if n == name {
-                //context.span().end();
+                let end_time = chrono::Utc::now().timestamp_nanos();  // <-- 新增
+
                 let span = context.span();
                 let span_context = span.span_context().clone();
 
+                let trace_id = span_context.trace_id().to_string();
+                let span_id = span_context.span_id().to_string();
+                let parent_span_id = thread_contexts.last()
+                    .map(|(_, c, _)| c.span().span_context().span_id().to_string());
+
                 span.end();
 
-                // ---- 写入文件 ----
+                // ---- 写入文件 OTLP JSON ----
                 let mut file = self.file.lock().unwrap();
+
                 let record = serde_json::json!({
+                    "traceId": trace_id,
+                    "spanId": span_id,
+                    "parentSpanId": parent_span_id.unwrap_or_default(),
                     "name": name,
-                    "trace_id": span_context.trace_id().to_string(),
-                    "span_id": span_context.span_id().to_string(),
-                    "thread_id": thread_id,
-                    "timestamp": chrono::Utc::now().timestamp_micros(),
+
+                    // Jaeger / Tempo 均支持 UnixNano
+                    "startTimeUnixNano": start_time,
+                    "endTimeUnixNano": end_time,
+
+                    "threadId": thread_id,
+
+                    // Tag 兼容 Jaeger
+                    "attributes": [
+                        {"key": "thread.id", "value": thread_id.to_string()}
+                    ]
                 });
+
                 writeln!(file, "{}", record.to_string()).unwrap();
             } else {
-                thread_contexts.push((n, context));
+                thread_contexts.push((n, context, start_time));
             }
         }
     }
