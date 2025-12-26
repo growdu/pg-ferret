@@ -159,7 +159,7 @@ impl TraceEmitter {
         if !attributes.is_empty() {
             builder = builder.with_attributes(attributes);
         }
-
+        println!("create trace:{}", name);
         if top_level {
             if first {
                 if let Some(pid) = pid {
@@ -198,6 +198,7 @@ impl TraceEmitter {
                         })
                         .unwrap_or(rand::random::<u128>())
                     };
+                    println!("Creating span with trace_id: {}", TraceId::from_bytes(trace_id.to_be_bytes()));
                     builder
                         .with_trace_id(TraceId::from_bytes(trace_id.to_be_bytes()))
                         .start(&self.tracer)
@@ -226,6 +227,7 @@ impl TraceEmitter {
         let mut contexts = self.contexts.lock().unwrap();
         let thread_contexts = contexts.entry(thread_id).or_default();
         let last = thread_contexts.pop();
+        println!("end trace:{}", name);
         if let Some((n, context)) = last {
             if n == name {
                 context.span().end();

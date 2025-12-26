@@ -3,11 +3,15 @@ use aya::util::online_cpus;
 use bpf::{attach_uprobes, init_bpf};
 use log::info;
 use metrics::init_metrics;
-use receive::listen_to_cpu;
+use receive::{RUN, listen_to_cpu};
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 use std::env;
 use std::error::Error;
 use tokio::signal;
 use tracing::TraceEmitter;
+use tokio::time::sleep;
+use tokio::time::Duration;
 
 mod bpf;
 mod generated;
@@ -33,6 +37,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .ok()
         .filter(|val| !val.is_empty());
     let tracing = TraceEmitter::initialise(tracing_endpoint)?;
+    
 
     // Initialise the metrics prometheus exporter. We'll collect metrics
     // about the postgres queries and this userspace collector, and expose
@@ -54,9 +59,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     for cpu_id in cpus {
         let tracing = tracing.clone();
         listen_to_cpu(cpu_id, &mut queue, tracing)?;
+        println!("listen to cpu:{}", cpu_id);
     }
 
-    signal::ctrl_c().await?;
-    info!("Exiting...");
+    signal::ctrl_c().await.unwrap();
+    println!("Ctrl+C received, stopping...");
+    RUN.store(false, Ordering::SeqCst);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    println!("Exiting...");
     Ok(())
+   
 }

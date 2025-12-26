@@ -5,7 +5,12 @@ use log::warn;
 use opentelemetry::{global, Context, KeyValue};
 use pg_ferret_shared::{Event, PostgresEntry};
 use regex::Regex;
+use std::thread;
+use std::time::Duration;
 use std::{error::Error, mem::size_of};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+pub static RUN: AtomicBool = AtomicBool::new(true);
 
 /// Listen to events coming from our eBPF program on a specific CPU.
 pub fn listen_to_cpu(
@@ -15,35 +20,40 @@ pub fn listen_to_cpu(
 ) -> Result<(), Box<dyn Error>> {
     let mut buf = queue.open(cpu_id, Some(64))?;
 
-    tokio::spawn(async move {
+    tokio::task::spawn_blocking(move || {
         let mut buffers = (0..64)
             .map(|_| BytesMut::with_capacity(size_of::<Event>()))
             .collect::<Vec<_>>();
 
         loop {
-            let events = match buf.read_events(&mut buffers) {
-                Ok(events) => events,
+            if !RUN.load(Ordering::SeqCst) {
+                println!("Stopping CPU loop early due to RUN = false");
+                break;
+            }
+
+            match buf.read_events(&mut buffers) {
+                Ok(events) => {
+                    for buffer in buffers.iter_mut().take(events.read) {
+                        let data = buffer.as_ptr() as *const Event;
+                        let event = unsafe { *data };
+                        receive_event_from_bpf(event, &tracing);
+                    }
+                }
                 Err(e) => {
                     warn!("Error reading events: {}", e);
                     continue;
                 }
-            };
-
-            for buffer in buffers.iter_mut().take(events.read) {
-                let data = buffer.as_ptr() as *const Event;
-
-                // SAFETY: We control the buffer that this pointer is dereferenced from
-                // and we will only read from it once. The buffer will stay in scope
-                // while the event is being processed. Once the event is processed, the
-                // buffer will be overwritten by the next event.
-                let event = unsafe { *data };
-
-                receive_event_from_bpf(event, &tracing);
             }
+
+            std::thread::sleep(Duration::from_millis(10));
         }
+
+        println!("Listener for CPU {} exited", cpu_id);
     });
+
     Ok(())
 }
+
 
 // Process an event received from the eBPF program. Start or end a span based on the event type.
 pub fn receive_event_from_bpf(event: Event, tracing: &TraceEmitter) {
